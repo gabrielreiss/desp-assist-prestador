@@ -6,17 +6,15 @@ import matplotlib.ticker as mtick
 
 BASE_DIR = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
+sns.set_theme(style="dark")
+print("Análise de Despesas Assistenciais por Prestador de Serviços")
 
 # %%
-produtos = pd.read_excel(os.path.join(DATA_DIR, 'produtos.xlsx'))
-
-# %%
-def convert_data(df):
+def convert_data(df:pd.DataFrame) -> pd.DataFrame:
     df['Data'] = pd.to_datetime(df['Data'])
     df['Data'] = df['Data'].dt.strftime("%Y-%m")
     return df
 
-# %%
 def import_dados(excel:list) -> pd.DataFrame:
     resultado = pd.DataFrame()
     for dados in excel:
@@ -35,24 +33,18 @@ def import_dados(excel:list) -> pd.DataFrame:
         resultado = pd.concat([resultado, df], axis=0, ignore_index=True)
     return resultado
 
-#%%
-df = import_dados(['conta 44751 IF pos.xlsx',
+def top5(df:pd.DataFrame, conta:list=['conta 44751 IF pos.xlsx',
                    'conta 40019 Adessao pre.xlsx',
                    'Conta 44752 adesao pos.xlsx',
-                   'conta 44753 empresarial pos.xlsx'])
-
-# %%
-top5_fornecedores = df.groupby(by=["Fornecedor"], as_index=False)["soma"].sum().sort_values(by=['soma'], ascending=False).head(5)["Fornecedor"].tolist()
-top5_df = df.loc[df['Fornecedor'].isin(top5_fornecedores)]
-top5_df['Fornecedor'] = top5_df['Fornecedor'].str.split('-', expand=True)[0]
-top5_df_geral = top5_df[["Fornecedor","Data","soma"]].groupby(by=["Fornecedor", "Data"], as_index=False)["soma"].agg(
-                                soma='sum'
-                              ).round(2).sort_values(by=["Data", "soma"], ascending=[True, False])
-
-
-#%%
-print("Análise de Despesas Assistenciais por Prestador de Serviços")
-sns.set_theme(style="dark")
+                   'conta 44753 empresarial pos.xlsx']) -> pd.DataFrame:
+    df = df[df["Conta"].isin(conta)]
+    top5_fornecedores = df.groupby(by=["Fornecedor"], as_index=False)["soma"].sum().sort_values(by=['soma'], ascending=False).head(5)["Fornecedor"].tolist()
+    top5_df = df.loc[df['Fornecedor'].isin(top5_fornecedores)]
+    top5_df['Fornecedor'] = top5_df['Fornecedor'].str.split('-', expand=True)[0]
+    top5_df_geral = top5_df[["Fornecedor","Data","soma"]].groupby(by=["Fornecedor", "Data"], as_index=False)["soma"].agg(
+                                    soma='sum'
+                                ).round(2).sort_values(by=["Data", "soma"], ascending=[True, False])
+    return top5_df_geral
 
 def millions_formatter(x, pos):
     """Formats a number to millions with appropriate rounding."""
@@ -63,36 +55,72 @@ def millions_formatter(x, pos):
     else:  # For values 1 million or above, show millions
         return f'R${x/1e6:,.0f}M'
 
-# Create a formatter object
-formatter = mtick.FuncFormatter(millions_formatter)
+def nome(conta:list)->str:
+    nomes_conta = ""
+    for i in range(len(conta)):
+        nomes_conta += f" - {str(conta[i])}"
+    return nomes_conta
 
-g = sns.relplot(
-    data=top5_df_geral,
-    x="Data", y="soma", col="Fornecedor", hue="Fornecedor",
-    kind="line", palette="crest", linewidth=4, zorder=5,
-    col_wrap=1, height=2, aspect=8, legend=False
-)
+def grafico(df:pd.DataFrame, conta:list):
+    df = top5(df, conta=conta)
+    titulo = nome(conta)
 
-for conta, ax in g.axes_dict.items():
+    # Create a formatter object
+    formatter = mtick.FuncFormatter(millions_formatter)
 
-    # Add the title as an annotation within the plot
-    ax.text(.0, .85, conta, transform=ax.transAxes, fontweight="bold", fontsize=12)
-
-    # Plot every year's time series in the background
-    sns.lineplot(
-        data=top5_df_geral, x="Data", y="soma", units="Fornecedor",
-        estimator=None, color=".7", linewidth=1, ax=ax
+    g = sns.relplot(
+        data=df,
+        x="Data", y="soma", col="Fornecedor", hue="Fornecedor",
+        kind="line", palette="crest", linewidth=4, zorder=5,
+        col_wrap=1, height=2, aspect=8, legend=False
     )
 
-ax.set_xticks(ax.get_xticks()[::2])
-ax.yaxis.set_major_formatter(formatter)
+    for conta, ax in g.axes_dict.items():
+        # Add the title as an annotation within the plot
+        ax.text(.0, .85, conta, transform=ax.transAxes, fontweight="bold", fontsize=12)
 
-g.set_titles("")
-g.set_axis_labels("", "Soma")
-g.tight_layout()
+        # Plot every year's time series in the background
+        sns.lineplot(
+            data=df, x="Data", y="soma", units="Fornecedor",
+            estimator=None, color=".7", linewidth=1, ax=ax
+        )
 
-g.figure.savefig(os.path.join(BASE_DIR, "output.png"))
+    ax.set_xticks(ax.get_xticks()[::2])
+    ax.yaxis.set_major_formatter(formatter)
+
+    g.set_titles("")
+    g.set_axis_labels("", "Soma")
+    g.tight_layout()
+
+    g.figure.savefig(os.path.join(BASE_DIR, f"output{titulo}.png"))
+    df.to_csv(os.path.join(BASE_DIR, f"resultado{titulo}.csv"), encoding='latin-1', sep=";")
+    return print(g)
 
 # %%
-top5_df_geral.to_csv(os.path.join(BASE_DIR, "resultado.csv"), encoding='latin-1', sep=";")
+produtos = pd.read_excel(os.path.join(DATA_DIR, 'produtos.xlsx'))
+
+#%%
+df = import_dados(['conta 44751 IF pos.xlsx',
+                   'conta 40019 Adessao pre.xlsx',
+                   'Conta 44752 adesao pos.xlsx',
+                   'conta 44753 empresarial pos.xlsx'])
+
+#%%
+grafico(df, conta=['conta 44751 IF pos'])
+
+#%%
+grafico(df, conta=['conta 40019 Adessao pre'])
+
+#%%
+grafico(df, conta=['Conta 44752 adesao pos'])
+
+#%%
+grafico(df, conta=['conta 44753 empresarial pos'])
+
+#%%
+grafico(df, conta=['conta 44751 IF pos',
+                   'conta 40019 Adessao pre',
+                   'Conta 44752 adesao pos',
+                   'conta 44753 empresarial pos'])
+
 # %%
